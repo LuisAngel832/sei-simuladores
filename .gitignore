@@ -1,0 +1,32 @@
+# Entorno virtual Python
+venv/
+.venv/
+env/
+
+# Cache de Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyc
+
+# Variables de entorno
+.env
+.env.local
+
+# Logs
+*.log
+logs/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user
+
+# Archivos de configuracion con credenciales reales
+config_local.py
+config_local.json
