@@ -1,0 +1,6 @@
+# SEI - Simuladores - Dependencias Python
+# Resto de imports usados por el codigo (json, os, uuid, time, threading,
+# signal, sys, argparse, getpass, random, urllib, datetime) son parte de
+# la biblioteca estandar de Python >= 3.10 y no requieren instalacion.
+
+paho-mqtt>=1.6.1
