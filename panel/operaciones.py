@@ -520,3 +520,134 @@ def escenario_d6_reset(publisher, overrides_temp, overrides_pres):
     _info("[OK] Reset completado. El simulador retomara control en su")
     _info("     proximo ciclo. La temperatura se estabilizara sola.")
     print()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# DEMO OPERADOR — Escenario integrador alineado con el speech
+# ════════════════════════════════════════════════════════════════════════════
+
+def escenario_demo_operador(publisher, cuarto_id, overrides_temp, overrides_pres):
+    """
+    Escenario integrador para la demo de 5 min, alineado con el speech.
+
+    Narrativa: durante la descarga la puerta queda abierta y entra calor.
+    La temperatura cruza preventiva (3 C) y critica (4 C). El sistema
+    detecta presencia, por lo que NO cierra automaticamente: dispara la
+    alarma para que el personal desaloje. Cuando el cuarto queda vacio,
+    el backend cierra la puerta automaticamente (HU-07) y el operador
+    refuerza la refrigeracion (HU-10). Todo queda firmado con JWT real.
+    """
+    _banner(f"DEMO OPERADOR - Cuarto {cuarto_id}")
+    _info("Escenario integrador alineado con el speech:")
+    _info("  1) Descarga: puerta abierta + personal adentro.")
+    _info("  2) Entra calor -> T cruza umbrales preventiva y critica.")
+    _info("  3) Alarma de desalojo (con presencia el sistema NO cierra).")
+    _info("  4) Personal sale -> backend cierra puerta automaticamente.")
+    _info("  5) Operador refuerza refrigeracion al 100%.")
+    _info("  6) Temperatura vuelve a objetivo. Todo auditado.")
+
+    if publisher.sesion.rol != "operador":
+        _info(f"[WARN] Sesion actual es rol='{publisher.sesion.rol}'.")
+        _info("       Para esta demo se requiere rol='operador'.")
+        _info("       Usa opcion 90 para re-login como jperez.")
+        return
+
+    # FASE 1 — Descarga en curso
+    _fase(1, "Descarga en curso: puerta abierta + personal adentro")
+    _replace_override_pres(overrides_pres, publisher, cuarto_id, presencia=True)
+    _replace_override_temp(
+        overrides_temp, publisher, cuarto_id,
+        modo="objetivo", target=-15.0, valor_inicial=-15.0,
+    )
+    time.sleep(2)
+    publisher.publicar_puerta_cmd(cuarto_id=cuarto_id, comando="forzar_apertura")
+    _hito("Puerta abierta. Cortina de aire activa (HU-06, HU-08).")
+    time.sleep(4)
+
+    # FASE 2 — Calor entra, escalada de alarma
+    _fase(2, "Entra calor: T cruza PREVENTIVA (3 C) y CRITICA (4 C)")
+    over = _replace_override_temp(
+        overrides_temp, publisher, cuarto_id,
+        modo="calentamiento", target=5.0, valor_inicial=-15.0,
+    )
+    _esperar_temp_objetivo(over, 5.0, max_seg=90)
+    _hito("Alarma CRITICA activa (HU-04, HU-05).")
+
+    # FASE 3 — Alarma de desalojo (presencia bloquea cierre)
+    _fase(3, "Alarma de desalojo - el sistema NO cierra con personal")
+    _info("Mostrar en HMI: badge critica + presencia=true.")
+    _info("El backend RESPETA la presencia y espera a que el cuarto se vacie.")
+    time.sleep(8)
+
+    # FASE 4 — Personal sale, backend dispara cierre automatico
+    _fase(4, "Personal sale - backend dispara cierre automatico (HU-07)")
+    _replace_override_pres(overrides_pres, publisher, cuarto_id, presencia=False)
+    _hito("Presencia = false. Backend inicia countdown de cierre.")
+    _info("Observa en HMI: 'abierta' -> 'cerrando' (countdown) -> 'cerrada'.")
+    time.sleep(60)
+    _hito("Puerta cerrada por el backend. Cuarto sellado.")
+
+    # FASE 5 — Operador refuerza refrigeracion
+    _fase(5, "Operador refuerza refrigeracion al 100% / 5 min (HU-10)")
+    publisher.publicar_refrigeracion_cmd(
+        cuarto_id=cuarto_id,
+        comando="forzar_encendido",
+        potencia_pct=100,
+        duracion_minutos=5,
+    )
+    _hito("HMI: badge FORZADO + motivo FORZADO_MANUAL + barra al 100%.")
+    time.sleep(8)
+
+    # FASE 6 — Enfriamiento + auditoria
+    _fase(6, "Cuarto vuelve a objetivo; toda la secuencia auditada")
+    _replace_override_temp(
+        overrides_temp, publisher, cuarto_id,
+        modo="enfriamiento", target=-15.0, valor_inicial=5.0,
+    )
+    _hito(
+        f"Acciones firmadas con operador_id={publisher.sesion.operador_id} "
+        f"(JWT {'mock' if publisher.sesion.es_mock else 'real'})."
+    )
+    _info("Trazabilidad HACCP: cada comando quedo en la BD del backend.")
+    print()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# DEMO SUPERVISOR — Vista de auditoria solo lectura
+# ════════════════════════════════════════════════════════════════════════════
+
+def escenario_demo_supervisor(publisher, cuarto_id, overrides_temp, overrides_pres):
+    """
+    Demo del supervisor de calidad (auditor) alineada con el speech:
+    "ingresaremos como supervisor para mostrar la vista de auditoria en
+    solo lectura, sin posibilidad de ejecutar acciones".
+
+    El HMI le oculta los botones de comando; el panel intenta uno y el
+    backend lo rechaza por rol (defensa en profundidad). Cubre HU-13 /
+    CP-AUTH-02.
+    """
+    _banner(f"DEMO SUPERVISOR - Auditor Cuarto {cuarto_id}")
+    _info("Defensa en profundidad: el supervisor solo audita.")
+    _info("  1) HMI oculta los botones de comando (mostrarlo al jurado).")
+    _info("  2) Si el panel intentara un comando, el backend lo rechaza.")
+    _info("  3) El intento queda registrado en sei/sistema/seguridad.")
+
+    if publisher.sesion.rol != "supervisor":
+        _info(f"[WARN] Sesion actual es rol='{publisher.sesion.rol}'.")
+        _info("       Para esta demo se requiere rol='supervisor'.")
+        _info("       Usa opcion 90 para re-login como cruiz.")
+        return
+
+    _fase(1, "Vista de auditoria en HMI (mostrar al jurado)")
+    _info("En el HMI: las cards muestran temperatura, presencia, alarmas")
+    _info("e historial - pero los botones de comando estan ocultos.")
+    time.sleep(6)
+
+    _fase(2, "El panel intenta un comando (no deberia poder)")
+    publisher.publicar_puerta_cmd(cuarto_id=cuarto_id, comando="forzar_apertura")
+    _hito("Esperando rechazo del backend en sei/sistema/seguridad (5s)...")
+    time.sleep(5)
+    _hito("Si el backend esta arriba, aparecio '[SecListener] [SEGURIDAD]'.")
+    _hito("La puerta NO cambio de estado.")
+    _info("Trazabilidad HACCP: el intento queda firmado con cruiz/supervisor.")
+    print()

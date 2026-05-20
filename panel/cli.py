@@ -24,6 +24,10 @@ from panel.security_listener import SecurityListener
 _overrides_temp: dict = {}  # {cuarto_id: OverrideTemperatura}
 _overrides_presencia: dict = {}  # {cuarto_id: OverridePresencia}
 
+# Modo de menu: False = Demo (5 min, solo escenarios de la presentacion),
+# True = Avanzado (menu completo con comandos atomicos y escenarios A-G).
+_modo_avanzado: bool = False
+
 
 def _imprimir_titulo():
     print()
@@ -59,9 +63,29 @@ def _prompt_sesion() -> Sesion:
     return sesion
 
 
-def _imprimir_menu():
+def _imprimir_menu_demo():
+    """
+    Menu reducido para la demo de 5 minutos. Alineado con el speech:
+    un escenario integrador para el operador y otro para el supervisor.
+    """
     print()
-    print("--- Menu principal ---")
+    print("--- Menu Demo (5 min) ---")
+    print()
+    print("  1) DEMO OPERADOR   - Descarga -> alarma -> desalojo ->")
+    print("                       cierre auto -> refuerzo (requiere jperez)")
+    print("  2) DEMO SUPERVISOR - Auditoria solo lectura + intento")
+    print("                       rechazado (requiere cruiz)")
+    print("  38) Reset          - Estado limpio (D6)")
+    print()
+    print("  90) Re-login (cambiar usuario/rol activo)")
+    print("  99) Cambiar a menu Avanzado")
+    print("   0) Salir")
+    print()
+
+
+def _imprimir_menu_avanzado():
+    print()
+    print("--- Menu Avanzado ---")
     print()
     print("  TEMPERATURA (Iter 1 - HU-04, HU-05)")
     print("   1) Calentar cuarto N hasta X C")
@@ -105,6 +129,7 @@ def _imprimir_menu():
     print("  38) D6) Reset a estado limpio (todos los cuartos)")
     print()
     print("  90) Re-login (cambiar usuario/rol activo)")
+    print("  99) Volver a menu Demo")
     print("  0) Salir")
     print()
 
@@ -417,13 +442,43 @@ def main():
 
     _imprimir_sesion(publisher)
 
+    global _modo_avanzado
     while True:
-        _imprimir_menu()
+        if _modo_avanzado:
+            _imprimir_menu_avanzado()
+        else:
+            _imprimir_menu_demo()
         opcion = _leer_opcion()
 
         if opcion == "0":
             _cerrar()
-        elif opcion == "1":
+        elif opcion == "99":
+            _modo_avanzado = not _modo_avanzado
+            destino = "Avanzado" if _modo_avanzado else "Demo"
+            print(f"[Panel] Modo {destino} activo.")
+            continue
+        elif opcion == "90":
+            nueva = _prompt_sesion()
+            publisher.set_sesion(nueva)
+            _imprimir_sesion(publisher)
+            continue
+
+        if not _modo_avanzado:
+            if opcion == "1":
+                _ejecutar_operacion(publisher, operaciones.escenario_demo_operador)
+            elif opcion == "2":
+                _ejecutar_operacion(publisher, operaciones.escenario_demo_supervisor)
+            elif opcion == "38":
+                _ejecutar_reset(publisher)
+            else:
+                print(
+                    f"[Panel] Opcion '{opcion}' no existe en modo Demo. "
+                    "Usa 99 para ir al menu Avanzado."
+                )
+            continue
+
+        # --- Menu Avanzado ---
+        if opcion == "1":
             _iniciar_override(publisher, modo="calentamiento")
         elif opcion == "2":
             _iniciar_override(publisher, modo="enfriamiento")
@@ -481,10 +536,6 @@ def main():
             _ejecutar_operacion(publisher, operaciones.escenario_d15_caida_telemetria)
         elif opcion == "38":
             _ejecutar_reset(publisher)
-        elif opcion == "90":
-            nueva = _prompt_sesion()
-            publisher.set_sesion(nueva)
-            _imprimir_sesion(publisher)
         else:
             print(f"[Panel] Opcion '{opcion}' no implementada todavia.")
 
