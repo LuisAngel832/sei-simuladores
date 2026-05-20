@@ -20,7 +20,13 @@ Flujo por ciclo:
   4. puerta.evaluar_condiciones() -> actualiza estado local (sin publicar)
   5. cortina.sincronizar_con_puerta()
   6. enfriador.evaluar_temperatura()
-  7. deriva = 0.02 + cortina + enfriador -> sensor_temp.set_deriva()
+  7. deriva termica por ciclo -> sensor_temp.set_deriva()
+       baseline             = +0.02
+       puerta abierta       = +0.50  (entra calor)
+         + con presencia    = +0.30  adicional (descarga activa)
+         + cortina activa   = -0.20  (mitigacion)
+       enfriador encendido  = -0.20 * (potencia_pct / 100)
+     Puerta cerrada -> solo baseline + enfriador.
   8. publisher.cuartos[n]["puerta"] sincronizado desde estado local
 
 Uso:
@@ -109,8 +115,19 @@ def ciclo_cuarto(n, componentes, publisher):
     cortina.sincronizar_con_puerta(puerta.estado)
     enfriador.evaluar_temperatura(temp_actual)
 
-    # 3. Derivas térmicas: calentamiento natural + cortina - enfriador
-    deriva = 0.02 + cortina.influencia_termica() + enfriador.influencia_termica()
+    # 3. Derivas termicas
+    # La temperatura sube cuando la puerta esta abierta (entra aire del
+    # exterior) y mas aun cuando hay presencia (descarga/carga en curso,
+    # la apertura es continua). La cortina mitiga; el enfriador enfria.
+    # Cuando la puerta esta cerrada, solo aplica el baseline + enfriador.
+    puerta_abierta = puerta.estado == "abierta"
+    deriva = 0.02  # baseline: aislamiento imperfecto
+    if puerta_abierta:
+        deriva += 0.50  # aire caliente entrando por la puerta
+        if hay_presencia:
+            deriva += 0.30  # carga/descarga activa
+        deriva += cortina.influencia_termica()  # mitigacion (negativa)
+    deriva += enfriador.influencia_termica()  # enfriamiento (negativo)
     sensor_temp.set_deriva(deriva)
 
     # 4. Sincronizar estado de puerta en publisher.cuartos para el heartbeat

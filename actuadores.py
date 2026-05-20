@@ -122,8 +122,14 @@ class CortinaDeAire:
         return self._activa
 
     def influencia_termica(self) -> float:
-        """Deriva térmica por ciclo cuando la cortina está activa (+0.06 C/ciclo)."""
-        return 0.06 if self._activa else 0.0
+        """
+        Deriva termica por ciclo cuando la cortina esta activa.
+
+        La cortina de aire MITIGA la entrada de calor por la puerta abierta;
+        no es una fuente de calor. Por eso su influencia es NEGATIVA: resta
+        al bonus de puerta abierta que se aplica en main.ciclo_cuarto().
+        """
+        return -0.20 if self._activa else 0.0
 
 
 class Enfriador:
