@@ -1,26 +1,51 @@
 # Abre las ventanas necesarias para correr el sistema SEI completo:
-#   1) Simulador Python  (files2/main.py)
-#   2) Panel de control  (files2/panel/cli.py)
+#   1) Simulador Python  (main.py)
+#   2) Panel CLI         (panel.cli)
 #   3) HMI server bridge (sei-hmi/server)
 #   4) HMI client Vite   (sei-hmi/client)
+#
+# Las IPs de EMQX y backend se leen de .env (cambialas alli, no aqui).
 #
 # Uso:  .\abrir_simulador_y_panel.ps1
 #       .\abrir_simulador_y_panel.ps1 -SoloHmi      # solo HMI
 #       .\abrir_simulador_y_panel.ps1 -SoloSim      # solo simulador + panel
 #
 # Requisitos previos:
-#   - EMQX corriendo en $MqttHost:1883
+#   - .env presente en este directorio (copiar de .env.example)
+#   - EMQX corriendo en MQTT_HOST:MQTT_PORT
 #   - npm install ya corrido en sei-hmi/server y sei-hmi/client
 param(
-    [string]$MqttHost = '192.168.100.52',
-    [int]$MqttPort = 1883,
     [switch]$SoloHmi,
     [switch]$SoloSim
 )
 
 Set-Location $PSScriptRoot
-$dirSim = $PSScriptRoot                                    # files2/
+$dirSim = $PSScriptRoot
 $dirHmi = Resolve-Path (Join-Path $PSScriptRoot '..\sei-hmi')
+
+$envFile = Join-Path $PSScriptRoot '.env'
+if (-not (Test-Path $envFile)) {
+    Write-Host "[ERROR] No se encontro .env en $envFile" -ForegroundColor Red
+    Write-Host "  Copia .env.example a .env y ajusta MQTT_HOST / BACKEND_HOST."
+    exit 1
+}
+
+# Parsea .env a un hash para reinyectar las variables en cada ventana hija.
+$envVars = @{}
+Get-Content $envFile | ForEach-Object {
+    $line = $_.Trim()
+    if ($line -and -not $line.StartsWith('#')) {
+        $kv = $line -split '=', 2
+        if ($kv.Length -eq 2) {
+            $envVars[$kv[0].Trim()] = $kv[1].Trim()
+        }
+    }
+}
+
+# Construye un prefijo "$env:KEY='VAL'; ..." para usar en cada ventana hija.
+$exports = ($envVars.GetEnumerator() | ForEach-Object {
+    "`$env:$($_.Key)='$($_.Value)'"
+}) -join '; '
 
 function Abrir-Ventana {
     param([string]$Titulo, [string]$WorkDir, [string]$Comando)
@@ -32,14 +57,14 @@ function Abrir-Ventana {
 }
 
 if (-not $SoloHmi) {
-    Write-Host "[Launcher] Ventana 1: SEI Simulador (broker $MqttHost`:$MqttPort)"
+    Write-Host "[Launcher] Ventana 1: SEI Simulador (broker $($envVars.MQTT_HOST):$($envVars.MQTT_PORT))"
     Abrir-Ventana -Titulo 'SEI Simulador' -WorkDir $dirSim `
-        -Comando "`$env:MQTT_HOST='$MqttHost'; `$env:MQTT_PORT='$MqttPort'; python main.py"
+        -Comando "$exports; python main.py"
     Start-Sleep -Seconds 2
 
-    Write-Host "[Launcher] Ventana 2: SEI Panel"
+    Write-Host "[Launcher] Ventana 2: SEI Panel (backend $($envVars.BACKEND_HOST):$($envVars.BACKEND_PORT))"
     Abrir-Ventana -Titulo 'SEI Panel' -WorkDir $dirSim `
-        -Comando "`$env:MQTT_HOST='$MqttHost'; `$env:MQTT_PORT='$MqttPort'; python -m panel.cli"
+        -Comando "$exports; python -m panel.cli"
 }
 
 if (-not $SoloSim) {
